@@ -33,8 +33,8 @@ if (currentUser) {
 joinBtn.onclick = () => {
     const name = userNameInput.value.trim();
     if (name) {
-        const randomID = Math.floor(1000 + Math.random() * 9000);
-        const finalName = name + "#" + randomID;
+        //const randomID = Math.floor(1000 + Math.random() * 9000);
+        const finalName = name;
         localStorage.setItem('nexusUser', finalName);
         location.reload();
     }
@@ -59,20 +59,35 @@ document.getElementById('submitPost').onclick = async () => {
         postModal.classList.add('hidden');
     } catch (e) { alert("Error posting: " + e.message); }
 };
-
-// --- 4. REAL-TIME FEED ---
+ 
+ // --- 4. REAL-TIME FEED ---
 const q = query(collection(db, "posts"), orderBy("time", "desc"));
 onSnapshot(q, (snapshot) => {
     feedContainer.innerHTML = "";
     snapshot.forEach(doc => {
         const post = doc.data();
+
+        // 1. Convert Firestore timestamp to readable time
+        const time = post.time ? post.time.toDate() : null;
+        const timeText = time 
+            ? time.toLocaleString('en-IN', { 
+                day: 'numeric', 
+                month: 'short', 
+                hour: '2-digit', 
+                minute: '2-digit' 
+              }) 
+            : "Just now"; // shows for 1 sec while server writes
+
         const postHtml = `
-            <div class="glass-card p-5 rounded-2xl mb-4 border border-slate-800 post-entry">
-                <div class="flex items-center mb-3">
-                    <div class="w-8 h-8 bg-blue-500 rounded-full mr-3"></div>
-                    <span class="text-sm font-bold">${post.user}</span>
+            <div class="glass-card p-5 rounded-2xl mb-4 border-slate-800 post-entry">
+                <div class="flex items-center justify-between mb-3">
+                    <div class="flex items-center">
+                        <div class="w-8 h-8 bg-blue-500 rounded-full mr-3"></div>
+                        <span class="text-sm font-bold">${post.user}</span>
+                    </div>
+                    <span class="text-xs text-slate-500">${timeText}</span> <!-- TIMESTAMP HERE -->
                 </div>
-                <p class="text-slate-200 leading-relaxed">${post.text}</p>
+                <p class="post-text text-slate-200 leading-relaxed">${post.text}</p> <!-- ADD post-text for newlines -->
             </div>
         `;
         feedContainer.innerHTML += postHtml;
