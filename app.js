@@ -1,5 +1,8 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { 
+  getFirestore, collection, addDoc, onSnapshot, query, orderBy, 
+  serverTimestamp, doc, updateDoc, arrayUnion, arrayRemove 
+} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
 // PASTE YOUR FIREBASE CONFIG HERE
 // For Firebase JS SDK v7.20.0 and later, measurementId is optional
@@ -51,32 +54,58 @@ document.getElementById('submitPost').onclick = async () => {
 
     try {
         await addDoc(collection(db, "posts"), {
-            user: currentUser,
-            text: content,
-            time: serverTimestamp()
-        });
+    user: currentUser,
+    text: content,
+    time: serverTimestamp(),
+    likes: [] // ADDED THIS: stores user names/ids who liked
+});
         document.getElementById('postContent').value = "";
         postModal.classList.add('hidden');
     } catch (e) { alert("Error posting: " + e.message); }
 };
- 
- // --- 4. REAL-TIME FEED ---
+
+
+// --- 3.5 LIKE POST ---
+const likePost = async (postId) => {
+    const postRef = doc(db, "posts", postId);
+    const likedPosts = JSON.parse(localStorage.getItem('likedPosts')) || []; // posts YOU liked
+    
+    if(likedPosts.includes(postId)){
+        // Unlike
+        await updateDoc(postRef, {
+            likes: arrayRemove(currentUser)
+        });
+        localStorage.setItem('likedPosts', JSON.stringify(likedPosts.filter(id => id !== postId)));
+    } else {
+        // Like
+        await updateDoc(postRef, {
+            likes: arrayUnion(currentUser)
+        });
+        localStorage.setItem('likedPosts', JSON.stringify([...likedPosts, postId]));
+    }
+}
+window.likePost = likePost; // make it global for onclick
+
+
+// --- 4. REAL-TIME FEED ---
 const q = query(collection(db, "posts"), orderBy("time", "desc"));
+const likedPosts = JSON.parse(localStorage.getItem('likedPosts')) || []; // get your liked posts
+
 onSnapshot(q, (snapshot) => {
     feedContainer.innerHTML = "";
-    snapshot.forEach(doc => {
-        const post = doc.data();
+    if (snapshot.empty) {
+        feedContainer.innerHTML = `<div class="text-center py-20 text-slate-500">No posts yet. Be the first!</div>`;
+    }
+    snapshot.forEach(docSnap => {
+        const post = docSnap.data();
+        const postId = docSnap.id;
+        const likesCount = post.likes ? post.likes.length : 0;
+        const isLiked = post.likes && post.likes.includes(currentUser); // did YOU like this?
 
-        // 1. Convert Firestore timestamp to readable time
         const time = post.time ? post.time.toDate() : null;
         const timeText = time 
-            ? time.toLocaleString('en-IN', { 
-                day: 'numeric', 
-                month: 'short', 
-                hour: '2-digit', 
-                minute: '2-digit' 
-              }) 
-            : "Just now"; // shows for 1 sec while server writes
+            ? time.toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) 
+            : "Just now";
 
         const postHtml = `
             <div class="glass-card p-5 rounded-2xl mb-4 border-slate-800 post-entry">
@@ -85,9 +114,17 @@ onSnapshot(q, (snapshot) => {
                         <div class="w-8 h-8 bg-blue-500 rounded-full mr-3"></div>
                         <span class="text-sm font-bold">${post.user}</span>
                     </div>
-                    <span class="text-xs text-slate-500">${timeText}</span> <!-- TIMESTAMP HERE -->
+                    <span class="text-xs text-slate-500">${timeText}</span>
                 </div>
-                <p class="post-text text-slate-200 leading-relaxed">${post.text}</p> <!-- ADD post-text for newlines -->
+                <p class="post-text text-slate-200 leading-relaxed mb-3">${post.text}</p>
+                
+                <!-- LIKE BUTTON SECTION -->
+                <div class="flex items-center gap-2 pt-2 border-t border-slate-700">
+                    <button onclick="likePost('${postId}')" class="flex items-center gap-1 text-sm transition ${isLiked ? 'text-red-500' : 'text-slate-400 hover:text-red-500'}">
+                        <i class="${isLiked ? 'fas' : 'far'} fa-heart"></i>
+                        <span>${likesCount}</span>
+                    </button>
+                </div>
             </div>
         `;
         feedContainer.innerHTML += postHtml;
